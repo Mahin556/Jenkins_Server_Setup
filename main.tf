@@ -94,36 +94,3 @@ resource "aws_instance" "jenkins_server" {
   }
 
 }
-
-resource "aws_instance" "sonar_server" {
-  ami                         = data.aws_ami.name.id
-  instance_type               = "t3.medium"
-  key_name                    = "ssh-key2"
-  subnet_id                   = data.aws_subnet.subnet.id
-  associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.instance-profile.name
-  vpc_security_group_ids      = [aws_security_group.security-group.id]
-  tags = {
-    Name = "Sonar-server"
-  }
-  root_block_device {
-    volume_size = 10
-    volume_type = "gp3"
-  }
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    private_key = file(var.ssh_private_key_path)
-    host        = self.public_ip
-  }
-  provisioner "file" {
-    source      = "sonar.sh"
-    destination = "/tmp/sonar.sh"
-  }
-  provisioner "remote-exec" {
-    inline = [
-      "chmod +x /tmp/sonar.sh",
-      "sudo /tmp/sonar.sh"
-    ]
-  }
-}

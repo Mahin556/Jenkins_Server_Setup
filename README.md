@@ -18,12 +18,8 @@
 * Terraform
 * Trivy
 * Helm
+* Sonarqube(on docker)
 
 ### EC2-Instance -- Jenkins
 * Jenkins
 * AdminAccess ---> Instance Profile
-* 
-
-#### Sonarserver(EC2-Instance)
-* Docker
-* Sonarqube(on docker)

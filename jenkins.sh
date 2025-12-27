@@ -82,7 +82,17 @@ sudo apt-get update
 sudo apt-get install trivy -y
 
 # Intalling Helm
-sudo snap install helm --classic
+sudo apt-get install gpg apt-transport-https --yes
+curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt-get update
+sudo apt-get install helm
+
+#Condiguring Sonar server
+sudo docker run -d \
+  --name sonar \
+  -p 9000:9000 \
+  sonarqube:lts-community
 
 #Verify
 jenkins --version
@@ -93,3 +103,4 @@ aws --version
 trivy --version
 eksctl --version
 gitleaks version
+docker ps
