@@ -1,6 +1,9 @@
-resource "aws_default_vpc" "default" {
+resource "aws_vpc" "jenkins_vpc" {
+  cidr_block           = var.vpc_cidr_block
+  enable_dns_hostnames = true
+  enable_dns_support   = true
   tags = {
-    Name = "Default VPC"
+    Name = "Jenkins VPC"
   }
 }
 
@@ -21,19 +24,53 @@ data "aws_ami" "name" {
   }
 }
 
-data "aws_subnet" "subnet" {
-  vpc_id            = aws_default_vpc.default.id
-  availability_zone = "ap-south-1a" # Example AZ
+data "aws_availability_zones" "zones" {
+  state = "available"
 }
 
-output "vpc" {
-  value = aws_default_vpc.default.id
+resource "aws_subnet" "public_subnets1" {
+  vpc_id            = aws_vpc.jenkins_vpc.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = data.aws_availability_zones.zones.names[0]
+}
+
+resource "aws_subnet" "public_subnets2" {
+  vpc_id            = aws_vpc.jenkins_vpc.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = data.aws_availability_zones.zones.names[1]
+}
+
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.jenkins_vpc.id
+  tags = {
+    Name = "Jenkins-IGW"
+  }
+}
+
+resource "aws_route_table" "public_rt" {
+  vpc_id = aws_vpc.jenkins_vpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+  tags = {
+    Name = "Jenkins-Public-RT"
+  }
+}
+
+resource "aws_route_table_association" "public_rt1" {
+  subnet_id      = aws_subnet.public_subnets1.id
+  route_table_id = aws_route_table.public_rt.id
+}
+
+resource "aws_route_table_association" "public_rt2" {
+  subnet_id      = aws_subnet.public_subnets2.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
 resource "aws_security_group" "security-group" {
-  vpc_id      = aws_default_vpc.default.id
+  vpc_id      = aws_vpc.jenkins_vpc.id
   description = "Allowing Jenkins, Sonarqube, SSH Access"
-
   ingress = [
     for port in [22, 8080, 9000, 9090, 80, 443, 3000, 3500, 27017] : {
       description      = "TLS from VPC"
@@ -47,28 +84,25 @@ resource "aws_security_group" "security-group" {
       cidr_blocks      = ["0.0.0.0/0"]
     }
   ]
-
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
   tags = {
     Name = var.sg_name
   }
 }
 
-
 resource "aws_instance" "jenkins_server" {
   ami                         = data.aws_ami.name.id
-  instance_type               = "t3.medium"
-  key_name                    = "ssh-key2"
-  subnet_id                   = data.aws_subnet.subnet.id
+  instance_type               = "t3.small"
+  key_name                    = var.ssh_key_name
+  subnet_id                   = aws_subnet.public_subnets1.id
+  iam_instance_profile        = aws_iam_instance_profile.instance-profile.name
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.security-group.id]
-
   tags = {
     Name = "Jenkins-server"
   }
@@ -76,32 +110,15 @@ resource "aws_instance" "jenkins_server" {
     volume_size = 20
     volume_type = "gp3"
   }
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    private_key =  file(var.ssh_private_key_path)
-    host        = self.public_ip
-  }
-  provisioner "file" {
-    source      = "jenkins.sh"
-    destination = "/tmp/jenkins.sh"
-  }
-  provisioner "remote-exec" {
-    inline = [
-      "chmod +x /tmp/jenkins.sh",
-      "sudo /tmp/jenkins.sh"
-    ]
-  }
-
+  user_data = file("jenkins.sh")
 }
 
 resource "aws_instance" "sonar_server" {
   ami                         = data.aws_ami.name.id
-  instance_type               = "t3.medium"
-  key_name                    = "ssh-key2"
-  subnet_id                   = data.aws_subnet.subnet.id
+  instance_type               = "t3.small"
+  key_name                    = var.ssh_key_name
+  subnet_id                   = aws_subnet.public_subnets2.id
   associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.instance-profile.name
   vpc_security_group_ids      = [aws_security_group.security-group.id]
   tags = {
     Name = "Sonar-server"
@@ -110,20 +127,5 @@ resource "aws_instance" "sonar_server" {
     volume_size = 10
     volume_type = "gp3"
   }
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    private_key = file(var.ssh_private_key_path)
-    host        = self.public_ip
-  }
-  provisioner "file" {
-    source      = "sonar.sh"
-    destination = "/tmp/sonar.sh"
-  }
-  provisioner "remote-exec" {
-    inline = [
-      "chmod +x /tmp/sonar.sh",
-      "sudo /tmp/sonar.sh"
-    ]
-  }
+  user_data = file("sonar.sh")
 }
